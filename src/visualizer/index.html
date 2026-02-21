@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Network Journey | Learn AI Interactively</title>
+    <link rel="icon" type="image/x-icon" href="neural-network_18263185.png">
+    <meta name="description"
+        content="An interactive learning platform to understand neural networks through real-time 3D visualization.">
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Fonts -->
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap">
+
+    <!-- Application Styles -->
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Core Engine -->
+    <script src="matrix.js"></script>
+    <script src="nn-engine.js"></script>
+    <script src="data-mnist.js"></script>
+
+    <!-- Journey System -->
+    <script src="journey.js"></script>
+    <script src="tooltips.js"></script>
+
+    <!-- Safe call wrapper - allows onclick handlers to work before app loads -->
+    <script>
+        // Safe wrapper for app method calls - prevents errors if app isn't loaded yet
+        function safeApp(method, ...args) {
+            if (window.app && typeof window.app[method] === 'function') {
+                window.app[method](...args);
+            } else {
+                console.warn(`App not ready yet for method: ${method}`);
+            }
+        }
+
+        // Safe wrapper for TeachingMode calls
+        function safeTeaching(method, ...args) {
+            if (window.TeachingMode && typeof window.TeachingMode[method] === 'function') {
+                window.TeachingMode[method](...args);
+            }
+        }
+
+        // Safe wrapper for Modals calls
+        function safeModals(method, ...args) {
+            if (window.Modals && typeof window.Modals[method] === 'function') {
+                window.Modals[method](...args);
+            }
+        }
+
+        // Safe wrapper for Tooltips calls
+        function safeTooltips(method, ...args) {
+            if (window.Tooltips && typeof window.Tooltips[method] === 'function') {
+                window.Tooltips[method](...args);
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div id="neural-network-journey">
+
+        <!-- ================================================================
+             TOP NAVIGATION BAR
+             ================================================================ -->
+        <nav class="main-nav">
+            <div class="logo">🧠 Neural Network Journey</div>
+
+            <div class="progress-tracker">
+                <span class="chapter-indicator" id="chapter-indicator">Chapter 1/5</span>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="overall-progress" style="width: 0%"></div>
+                </div>
+                <span class="xp-counter" id="xp-counter">0 XP</span>
+            </div>
+
+            <div class="nav-controls">
+                <button class="icon-btn" onclick="safeModals('open', 'whatIsBackprop')"
+                    title="Help & Tutorials">❓</button>
+                <button class="icon-btn" onclick="safeApp('showAchievements')" title="Achievements">🏆</button>
+                <button class="icon-btn" onclick="safeApp('toggleTheme')" id="theme-btn"
+                    title="Toggle Theme">🌙</button>
+            </div>
+        </nav>
+
+        <!-- ================================================================
+             LEFT SIDEBAR - CHAPTERS & GLOSSARY
+             ================================================================ -->
+        <aside class="left-sidebar">
+            <div class="chapter-list">
+                <h3>Learning Path</h3>
+                <div id="chapter-nav">
+                    <!-- Chapters rendered by JS -->
+                </div>
+            </div>
+
+            <div class="quick-glossary">
+                <h3>Quick Reference</h3>
+                <div class="glossary-term" onclick="if(window.Tooltips) Tooltips.show('neuron', {}, this)"
+                    style="cursor: pointer;">
+                    <strong>Neuron</strong>
+                    <p>A decision-making unit</p>
+                </div>
+                <div class="glossary-term" onclick="if(window.Tooltips) Tooltips.show('weight', {}, this)"
+                    style="cursor: pointer;">
+                    <strong>Weight</strong>
+                    <p>Strength of connection</p>
+                </div>
+                <div class="glossary-term" onclick="if(window.Tooltips) Tooltips.show('bias', {}, this)"
+                    style="cursor: pointer;">
+                    <strong>Bias</strong>
+                    <p>Offset added to neurons</p>
+                </div>
+                <div class="glossary-term" onclick="if(window.Tooltips) Tooltips.show('gradient', {}, this)"
+                    style="cursor: pointer;">
+                    <strong>Gradient</strong>
+                    <p>Direction to improve</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ================================================================
+             CENTER - VISUALIZATION AREA
+             ================================================================ -->
+        <main class="visualization-area">
+
+            <!-- Context Bar -->
+            <div class="context-bar">
+                <div class="current-action">
+                    <span class="action-icon">🎯</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div id="connection-status"
+                             style="width: 8px; height: 8px; border-radius: 50%; background: var(--error);"
+                             title="Disconnected"></div>
+                        <span class="action-text" id="current-action-text">Initializing...</span>
+                    </div>
+                </div>
+                <div class="current-input">
+                    <canvas id="mini-input-preview" width="28" height="28"></canvas>
+                    <span id="current-digit-label">No input</span>
+                </div>
+                <div class="stats-mini">
+                    <span id="mini-loss">Loss: --</span>
+                    <span id="mini-accuracy">Acc: --</span>
+                </div>
+            </div>
+
+            <!-- Main 3D Canvas -->
+            <div id="threejs-container" class="visualization-canvas">
+                <div id="canvas-container-a"></div>
+                <div id="fps-counter">FPS: 0</div>
+
+                <!-- Annotation Layer for Teaching Mode -->
+                <div class="annotation-layer" id="annotation-layer"></div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <div class="playback-controls">
+                    <button id="step-back" title="Previous Step" onclick="safeTeaching('stepBackward')">⏮️</button>
+                    <button id="play-pause" class="primary-btn" onclick="safeApp('toggleTraining')">▶️</button>
+                    <button id="step-forward" title="Next Step" onclick="safeTeaching('stepForward')">⏭️</button>
+                </div>
+
+                <div class="speed-control">
+                    <label>Speed</label>
+                    <div class="speed-buttons">
+                        <button data-speed="stepByStep" onclick="safeApp('setSpeed', 'stepByStep')">Step</button>
+                        <button data-speed="narrated" onclick="safeApp('setSpeed', 'narrated')">Slow</button>
+                        <button data-speed="normal" class="active"
+                            onclick="safeApp('setSpeed', 'normal')">Normal</button>
+                        <button data-speed="fast" onclick="safeApp('setSpeed', 'fast')">Fast</button>
+                    </div>
+                </div>
+
+                <div class="learning-rate-control">
+                    <label>Learning Rate: <span id="lr-value">0.01</span></label>
+                    <input type="range" id="lr-slider" min="0.0001" max="0.1" step="0.0001" value="0.01">
+                    <div class="lr-presets">
+                        <button onclick="setLR(0.001)">Slow</button>
+                        <button onclick="setLR(0.01)">Normal</button>
+                        <button onclick="setLR(0.05)">Fast</button>
+                    </div>
+                </div>
+
+                <div class="visualization-toggles">
+                    <label class="toggle">
+                        <input type="checkbox" id="show-activations" checked
+                            onchange="safeApp('toggleViz', 'activations')">
+                        <span>Neurons</span>
+                    </label>
+                    <label class="toggle">
+                        <input type="checkbox" id="show-weights" checked onchange="safeApp('toggleViz', 'connections')">
+                        <span>Connections</span>
+                    </label>
+                    <label class="toggle">
+                        <input type="checkbox" id="show-gradients" onchange="safeApp('toggleViz', 'gradients')">
+                        <span>Gradients</span>
+                    </label>
+                </div>
+
+                <!-- Add to control panel -->
+                <div class="animation-controls">
+                    <button onclick="if(window.app) window.app.animator.animateForwardPass()"
+                        title="Show Forward Pass Animation" class="icon-btn">
+                        →
+                    </button>
+                    <button onclick="if(window.app) window.app.animator.animateBackprop()"
+                        title="Show Backprop Animation" class="icon-btn">
+                        ←
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- ================================================================
+             RIGHT SIDEBAR - INFO, STATS, TOOLS
+             ================================================================ -->
+        <aside class="right-sidebar">
+
+            <!-- Current Concept Explanation -->
+            <div class="concept-panel">
+                <h3>What's Happening Now?</h3>
+                <div id="current-concept-explanation">
+                    <p class="concept-title" id="concept-title">Welcome!</p>
+                    <p class="concept-simple" id="concept-simple">
+                        This is a real neural network you're about to train. Each glowing sphere is a neuron - a tiny
+                        decision maker.
+                    </p>
+                    <button class="learn-more-btn" onclick="safeModals('open', 'whatIsBackprop')">Learn More</button>
+                </div>
+            </div>
+
+            <!-- Training Stats -->
+            <div class="stats-panel">
+                <h3>Training Stats</h3>
+                <div class="stat">
+                    <span class="stat-label">Epoch:</span>
+                    <span class="stat-value" id="stat-epoch">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Batch:</span>
+                    <span class="stat-value" id="stat-batch">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Loss:</span>
+                    <span class="stat-value" id="stat-loss">--</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Accuracy:</span>
+                    <span class="stat-value" id="stat-accuracy">--</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="loss-chart" width="250" height="120"></canvas>
+                </div>
+            </div>
+
+            <!-- Interactive Tools -->
+            <div class="tools-panel">
+                <h3>Tools</h3>
+                <button class="tool-btn" onclick="safeApp('openDrawingPad')">
+                    ✏️ Draw Your Own Digit
+                </button>
+                <button class="tool-btn" onclick="safeApp('openArchitecture')">
+                    🏗️ Build Architecture
+                </button>
+                <button class="tool-btn" onclick="safeApp('openAnalysis')">
+                    📊 Analyze Network
+                </button>
+                <button class="tool-btn" onclick="safeApp('openWeightPainter')">
+                    🎨 Paint Weights Manually
+                </button>
+                <button class="tool-btn" onclick="safeApp('toggleComparisonMode')">
+                    ⚖️ Compare: Backprop vs Random
+                </button>
+            </div>
+
+            <!-- Current Challenge -->
+            <div class="challenge-panel">
+                <h3>💪 Current Challenge</h3>
+                <div class="challenge-card">
+                    <p class="challenge-title" id="challenge-title">Reach 80% Accuracy</p>
+                    <div class="challenge-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="challenge-progress-fill" style="width: 0%"></div>
+                        </div>
+                        <span class="progress-text" id="challenge-progress-text">0% / 80%</span>
+                    </div>
+                    <p class="challenge-reward">Reward: 50 XP + "First Train" badge</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ====================================================================
+         MODALS & DIALOGS
+         ==================================================================== -->
+
+    <!-- Drawing Pad Modal -->
+    <div id="drawing-pad-modal" class="modal-overlay">
+        <div class="modal-container" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 class="modal-title">✏️ Draw a Digit</h2>
+                <button class="modal-close" onclick="safeApp('closeDrawingPad')">×</button>
+            </div>
+            <div class="modal-content" style="text-align: center;">
+                <canvas id="drawing-canvas" width="280" height="280"
+                    style="border: 2px solid var(--accent); border-radius: 12px; cursor: crosshair; background: #000;"></canvas>
+                <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: center;">
+                    <button class="modal-btn-secondary" onclick="safeApp('clearDrawing')">Clear</button>
+                    <button class="modal-btn-primary" onclick="safeApp('predictDrawing')">Predict</button>
+                </div>
+
+                <div id="prediction-result" style="margin-top: 20px;"></div>
+
+                <!-- Debug preprocessing -->
+                <div id="debug-preprocessing-container" style="display: none; margin-top: 16px; text-align: left;">
+                    <h4 style="font-size: 0.85rem; margin-bottom: 8px;">Preprocessing Debug</h4>
+                    <div style="display: flex; gap: 16px; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">Processed 28×28</div>
+                            <canvas id="debug-processed-canvas" width="28" height="28"
+                                style="width: 84px; height: 84px; border: 1px solid var(--accent); image-rendering: pixelated;"></canvas>
+                        </div>
+                        <div style="flex: 1;">
+                            <pre id="debug-stats" style="font-size: 0.7rem; color: var(--text-dim);"></pre>
+                        </div>
+                    </div>
+                    <label style="font-size: 0.75rem; margin-top: 8px; display: block;">
+                        <input type="checkbox" id="show-debug-preprocess" onchange="safeApp('togglePreprocessDebug')">
+                        Show
+                        preprocessing details
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Architecture Builder Modal -->
+    <div id="architecture-modal" class="modal-overlay">
+        <div class="modal-container" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 class="modal-title">🏗️ Build Your Network</h2>
+                <button class="modal-close" onclick="safeApp('closeArchitecture')">×</button>
+            </div>
+            <div class="modal-content">
+                <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                    <div style="font-size: 0.85rem; color: var(--text-dim);">Input Layer: 784 neurons (28×28 pixels)
+                    </div>
+                </div>
+
+                <div id="hidden-layers-builder">
+                    <!-- Dynamic layers go here -->
+                </div>
+
+                <button class="tool-btn" onclick="safeApp('addHiddenLayer')" style="margin: 12px 0;">
+                    + Add Hidden Layer
+                </button>
+
+                <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; margin-top: 16px;">
+                    <div style="font-size: 0.85rem; color: var(--text-dim);">Output Layer: 10 neurons (digits 0-9)</div>
+                </div>
+
+                <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span>Total Parameters:</span>
+                        <span id="total-params">0</span>
+                    </div>
+                    <button class="modal-btn-primary" style="width: 100%;" onclick="safeApp('applyArchitecture')">
+                        Build Network
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analysis Modal -->
+    <div id="analysis-modal" class="modal-overlay">
+        <div class="modal-container" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2 class="modal-title">📊 Network Analysis</h2>
+                <button class="modal-close" onclick="safeApp('closeAnalysis')">×</button>
+            </div>
+            <div class="modal-content">
+                <div style="display: grid; grid-template-columns: 1fr; gap: 24px;">
+
+                    <!-- Feature C: Weight Heatmaps -->
+                    <div class="concept-panel">
+                        <h3>Learned Features (Hidden Layer 1)</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">
+                            These are the patterns that individual neurons in the first hidden layer are looking for.
+                            Red means the neuron activates (likes) that pixel, Blue means it suppresses (dislikes).
+                        </p>
+                        <div id="heatmap-container"
+                            style="display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; max-height: 300px; overflow-y: auto;">
+                            <!-- Heatmaps injected by JS -->
+                            <div style="text-align: center; padding: 20px; color: var(--text-dim); grid-column: 1/-1;">
+                                Train the network to see learned features here!
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Feature D: Loss Landscape -->
+                    <div class="concept-panel">
+                        <h3>Loss Landscape (2D Projection)</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">
+                            A simplified view of how the network searches for the "lowest ground" (minimum loss).
+                        </p>
+                        <div class="chart-container"
+                            style="height: 250px; background: #000; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+                            <canvas id="loss-landscape-canvas" width="600" height="250"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Activations Histogram -->
+                    <div class="concept-panel">
+                        <h3>Activation Distribution</h3>
+                        <select id="histogram-layer-select" onchange="safeApp('updateHistogram')"
+                            style="margin-bottom: 8px; width: 100%; padding: 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px;">
+                            <option value="0">Hidden Layer 1</option>
+                            <option value="1">Hidden Layer 2</option>
+                        </select>
+                        <div class="chart-container" style="height: 150px;">
+                            <canvas id="activation-histogram" width="600" height="150"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Onboarding / Tutorial Overlay -->
+    <div id="onboarding-overlay" class="modal-overlay">
+        <div class="modal-container" style="max-width: 550px;">
+            <div class="modal-header">
+                <h2 class="modal-title" id="onboarding-title">Welcome to Your Neural Network! 👋</h2>
+                <button class="modal-close"
+                    onclick="if(window.app) app.skipOnboarding(); else document.getElementById('onboarding-overlay').classList.remove('visible');">×</button>
+            </div>
+            <div class="modal-content" id="onboarding-content">
+                <p>This is a real neural network that you're about to train from scratch.</p>
+                <p>Each glowing sphere is a <strong>neuron</strong> - a tiny decision maker.</p>
+                <p>By the end of this journey, you'll understand exactly how it learns.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn-secondary"
+                    onclick="if(window.app) app.skipOnboarding(); else document.getElementById('onboarding-overlay').classList.remove('visible');">Skip
+                    Tutorial</button>
+                <button class="modal-btn-primary" id="onboarding-next"
+                    onclick="if(window.app) app.nextOnboardingStep(); else document.getElementById('onboarding-overlay').classList.remove('visible');">Let's
+                    Go! →</button>
+            </div>
+        </div>
+    </div>
+    <div id="teaching-narration" class="teaching-narration"></div>
+    <!-- Weight Painter Modal -->
+    <div id="weight-painter-modal" class="modal-overlay">
+        <div class="modal-container" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2 class="modal-title">🎨 Weight Painter</h2>
+                <button class="modal-close" onclick="safeApp('closeWeightPainter')">×</button>
+            </div>
+            <div class="modal-content">
+                <p style="margin-bottom: 16px;">Paint weights manually! Red = positive (activates), Blue = negative
+                    (suppresses). These are the weights connecting input pixels to one neuron.</p>
+
+                <div style="display: grid; grid-template-columns: 1fr 200px; gap: 20px;">
+                    <div>
+                        <canvas id="weight-painter-canvas" width="448" height="448"
+                            style="border: 2px solid var(--accent); border-radius: 8px; cursor: crosshair; background: #000; image-rendering: pixelated;"></canvas>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <div>
+                            <label style="font-size: 0.85rem; display: block; margin-bottom: 4px;">Brush Size</label>
+                            <input type="range" id="weight-brush-size" min="1" max="5" value="3"
+                                style="width: 100%; accent-color: var(--accent);">
+                        </div>
+
+                        <div>
+                            <label style="font-size: 0.85rem; display: block; margin-bottom: 4px;">Strength</label>
+                            <input type="range" id="weight-strength" min="-1" max="1" step="0.1" value="0.5"
+                                style="width: 100%; accent-color: var(--accent);">
+                        </div>
+
+                        <div>
+                            <label style="font-size: 0.85rem; display: block; margin-bottom: 4px;">Target Neuron</label>
+                            <select id="weight-target-neuron"
+                                onchange="if(window.app) window.app.selectedNeuron = parseInt(this.value)"
+                                style="width: 100%; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary);">
+                                <option value="0">Neuron 0</option>
+                                <option value="1">Neuron 1</option>
+                                <option value="2">Neuron 2</option>
+                                <option value="3">Neuron 3</option>
+                                <option value="4">Neuron 4</option>
+                            </select>
+                        </div>
+
+                        <button class="modal-btn-secondary" onclick="safeApp('resetPainterWeights')"
+                            style="width: 100%;">
+                            Reset Weights
+                        </button>
+
+                        <div
+                            style="padding: 12px; background: var(--accent-dim); border-radius: 4px; font-size: 0.75rem;">
+                            💡 Tip: Try painting a "7" pattern to see if the neuron learns to detect 7s!
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn-secondary" onclick="safeApp('closeWeightPainter')">Cancel</button>
+                <button class="modal-btn-primary" onclick="safeApp('applyPaintedWeights')">Apply Weights</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====================================================================
+         MAIN APPLICATION SCRIPT
+         ==================================================================== -->
+    <script src="main-app.js"></script>
+
+    <script>
+        // Initialize Journey UI
+        document.addEventListener('DOMContentLoaded', () => {
+            // Render chapters in sidebar
+            const chapterNav = document.getElementById('chapter-nav');
+            if (chapterNav && window.Journey) {
+                Journey.chapters.forEach((chapter, idx) => {
+                    const isCompleted = Journey.isChapterCompleted(chapter.id);
+                    const isUnlocked = Journey.isChapterUnlocked(chapter.id);
+                    const isCurrent = Journey.progress.currentChapter === chapter.id;
+
+                    const div = document.createElement('div');
+                    div.className = `chapter ${isCompleted ? 'completed' : ''} ${isCurrent ? 'active' : ''} ${!isUnlocked ? 'locked' : ''}`;
+                    div.innerHTML = `
+                        <span class="chapter-icon">${isCompleted ? '✓' : (!isUnlocked ? '🔒' : chapter.icon)}</span>
+                        <div>
+                            <span class="chapter-title">${idx + 1}. ${chapter.title}</span>
+                            ${isCurrent ? `<div class="chapter-progress">${Journey.getChapterProgress(chapter.id)}% complete</div>` : ''}
+                        </div>
+                    `;
+                    div.onclick = () => {
+                        if (isUnlocked) {
+                            Journey.setCurrentChapter(chapter.id);
+                            location.reload(); // Simple refresh to update UI
+                        }
+                    };
+                    chapterNav.appendChild(div);
+                });
+            }
+
+            // Update XP counter
+            const xpCounter = document.getElementById('xp-counter');
+            if (xpCounter && window.Journey) {
+                xpCounter.textContent = `${Journey.progress.xp} XP`;
+            }
+
+            // Update progress bar
+            const progressFill = document.getElementById('overall-progress');
+            if (progressFill && window.Journey) {
+                progressFill.style.width = `${Journey.getProgressPercentage()}%`;
+            }
+
+            // Chapter indicator
+            const chapterIndicator = document.getElementById('chapter-indicator');
+            if (chapterIndicator && window.Journey) {
+                const currentIdx = Journey.chapters.findIndex(c => c.id === Journey.progress.currentChapter) + 1;
+                chapterIndicator.textContent = `Chapter ${currentIdx}/5`;
+            }
+
+            // Show onboarding for first-time users
+            if (!localStorage.getItem('nn-journey-onboarded')) {
+                document.getElementById('onboarding-overlay').classList.add('visible');
+            }
+        });
+    </script>
+</body>
+
+</html>
